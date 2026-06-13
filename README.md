@@ -13,11 +13,12 @@ Represents all system users (students, instructors, admins).
 ```sql
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    first_name VARCHAR(100) NOT NULL,
-    last_name VARCHAR(100) NOT NULL,
+    first_name VARCHAR(100),
+    last_name VARCHAR(100),
     email VARCHAR(255) UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
     role VARCHAR(20) NOT NULL CHECK (role IN ('student', 'instructor', 'admin')),
+    is_email_verified BOOLEAN DEFAULT FALSE,
+    last_login_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
