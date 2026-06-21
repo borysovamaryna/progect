@@ -1,6 +1,21 @@
-# Database Design
+# Database Design (MVP)
 
-This document describes the database structure for the Education Platform, supporting individual and group lessons, Magic Link authentication, and administrator approval workflows.
+## Overview
+
+This database schema supports the MVP version of the Education Platform.
+
+The platform allows:
+
+* Student authentication via Magic Links
+* Administrator authentication via email and password
+* Student approval workflow
+* Subject management
+* Teacher availability management
+* Lesson scheduling
+* Lesson booking
+* Email notifications and reminders
+
+For the MVP, teachers are not managed as platform users. Teacher information is stored directly within availability slots and lessons.
 
 ---
 
@@ -8,122 +23,76 @@ This document describes the database structure for the Education Platform, suppo
 
 ## Users
 
-Stores all platform users, including students, instructors, and administrators.
+Stores platform users.
 
-### Authentication
+### Roles
 
-* Administrators authenticate using email and password.
-* Students and instructors authenticate using Magic Links.
-* New users are automatically created when signing in with a new email address.
-* New accounts require administrator approval before receiving full access.
+* `student`
+* `admin`
 
-```sql
-CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+### Responsibilities
 
-    first_name VARCHAR(100),
-    last_name VARCHAR(100),
+Students:
 
-    email VARCHAR(255) UNIQUE NOT NULL,
+* Authenticate using Magic Links
+* Book lessons
+* View lesson history
 
-    role VARCHAR(20) NOT NULL
-        CHECK (role IN ('student', 'instructor', 'admin')),
+Administrators:
 
-    password_hash TEXT,
-
-    approval_status VARCHAR(20) NOT NULL DEFAULT 'pending'
-        CHECK (approval_status IN ('pending', 'approved', 'rejected')),
-
-    is_email_verified BOOLEAN DEFAULT FALSE,
-
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
-```
+* Authenticate using email and password
+* Manage students
+* Manage subjects
+* Manage lesson availability
+* Approve or reject users
 
 ---
 
 ## Magic Links
 
-Stores temporary authentication tokens used for passwordless login.
+Stores temporary authentication tokens used for passwordless student login.
 
-```sql
-CREATE TABLE magic_links (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+### Rules
 
-    user_id UUID NOT NULL,
-
-    token_hash TEXT NOT NULL,
-
-    expires_at TIMESTAMP NOT NULL,
-
-    used_at TIMESTAMP,
-
-    created_at TIMESTAMP DEFAULT NOW(),
-
-    CONSTRAINT fk_magic_link_user
-        FOREIGN KEY (user_id)
-        REFERENCES users(id)
-        ON DELETE CASCADE
-);
-```
+* Single-use tokens
+* Expiration date required
+* Linked to a user account
 
 ---
 
-## Instructors
+## Subjects
 
-Stores instructor-specific profile information.
+Stores available school subjects.
 
-```sql
-CREATE TABLE instructors (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+### Examples
 
-    user_id UUID UNIQUE NOT NULL,
+* English
+* Mathematics
+* Physics
+* Chemistry
 
-    bio TEXT,
-
-    specialization VARCHAR(255),
-
-    status VARCHAR(20) DEFAULT 'active'
-        CHECK (status IN ('active', 'inactive')),
-
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
-
-    CONSTRAINT fk_instructor_user
-        FOREIGN KEY (user_id)
-        REFERENCES users(id)
-        ON DELETE CASCADE
-);
-```
+Subjects are assigned to availability slots and lessons.
 
 ---
 
 ## Availability Slots
 
-Represents instructor availability schedules.
+Represents available lesson slots created by administrators.
 
-```sql
-CREATE TABLE availability_slots (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+Each slot contains:
 
-    instructor_id UUID NOT NULL,
+* Subject
+* Teacher name
+* Teacher email (optional)
+* Start time
+* End time
+* Availability status
 
-    start_time TIMESTAMP NOT NULL,
-    end_time TIMESTAMP NOT NULL,
+### Statuses
 
-    status VARCHAR(20) DEFAULT 'available'
-        CHECK (status IN ('available', 'booked', 'unavailable')),
-
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
-
-    CONSTRAINT fk_slot_instructor
-        FOREIGN KEY (instructor_id)
-        REFERENCES instructors(id)
-        ON DELETE CASCADE
-);
-```
+* available
+* booked
+* unavailable
 
 ---
 
@@ -131,42 +100,18 @@ CREATE TABLE availability_slots (
 
 Represents scheduled lessons.
 
-Supports both individual and group sessions.
+A lesson is created from an availability slot.
 
-```sql
-CREATE TABLE lessons (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+### Lesson Types
 
-    instructor_id UUID NOT NULL,
+* individual
+* group
 
-    slot_id UUID UNIQUE,
+### Statuses
 
-    title VARCHAR(255),
-
-    description TEXT,
-
-    lesson_type VARCHAR(20) NOT NULL
-        CHECK (lesson_type IN ('individual', 'group')),
-
-    max_participants INT NOT NULL DEFAULT 1,
-
-    status VARCHAR(20) DEFAULT 'scheduled'
-        CHECK (status IN ('scheduled', 'completed', 'cancelled')),
-
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
-
-    CONSTRAINT fk_lesson_instructor
-        FOREIGN KEY (instructor_id)
-        REFERENCES instructors(id)
-        ON DELETE CASCADE,
-
-    CONSTRAINT fk_lesson_slot
-        FOREIGN KEY (slot_id)
-        REFERENCES availability_slots(id)
-        ON DELETE SET NULL
-);
-```
+* scheduled
+* completed
+* cancelled
 
 ---
 
@@ -174,124 +119,148 @@ CREATE TABLE lessons (
 
 Stores lesson reservations made by students.
 
-```sql
-CREATE TABLE bookings (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+### Statuses
 
-    lesson_id UUID NOT NULL,
+* booked
+* cancelled
+* completed
 
-    student_id UUID NOT NULL,
+Supports:
 
-    status VARCHAR(20) DEFAULT 'booked'
-        CHECK (
-            status IN (
-                'booked',
-                'cancelled',
-                'completed'
-            )
-        ),
-
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
-
-    CONSTRAINT fk_booking_lesson
-        FOREIGN KEY (lesson_id)
-        REFERENCES lessons(id)
-        ON DELETE CASCADE,
-
-    CONSTRAINT fk_booking_student
-        FOREIGN KEY (student_id)
-        REFERENCES users(id)
-        ON DELETE CASCADE
-);
-```
+* Individual lessons
+* Group lessons
+* Booking history
+* Cancellation tracking
 
 ---
 
 ## Notifications
 
-Stores system notifications and user alerts.
+Stores system notifications and email events.
 
-```sql
-CREATE TABLE notifications (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+### Examples
 
-    user_id UUID NOT NULL,
-
-    type VARCHAR(50) NOT NULL,
-
-    message TEXT NOT NULL,
-
-    is_read BOOLEAN DEFAULT FALSE,
-
-    created_at TIMESTAMP DEFAULT NOW(),
-
-    CONSTRAINT fk_notification_user
-        FOREIGN KEY (user_id)
-        REFERENCES users(id)
-        ON DELETE CASCADE
-);
-```
+* Magic Link email
+* Booking confirmation
+* Booking cancellation
+* Lesson reminder
 
 ---
 
 # Relationships
 
-| Entity                           | Relationship |
-| -------------------------------- | ------------ |
-| Users → Instructors              | 1 : 0..1     |
-| Users → Magic Links              | 1 : M        |
-| Instructors → Availability Slots | 1 : M        |
-| Availability Slots → Lessons     | 1 : 1        |
-| Instructors → Lessons            | 1 : M        |
-| Lessons → Bookings               | 1 : M        |
-| Users (Students) → Bookings      | 1 : M        |
-| Users → Notifications            | 1 : M        |
+| Entity                        | Relationship |
+| ----------------------------- | ------------ |
+| Users → Magic Links           | 1 : M        |
+| Subjects → Availability Slots | 1 : M        |
+| Availability Slots → Lessons  | 1 : 1        |
+| Subjects → Lessons            | 1 : M        |
+| Lessons → Bookings            | 1 : M        |
+| Users → Bookings              | 1 : M        |
+| Users → Notifications         | 1 : M        |
 
 ---
 
 # Business Rules
 
-### Authentication
+## Authentication
 
-* Administrators log in using email and password.
-* Students and instructors log in using Magic Links.
-* Magic Link tokens are single-use and expire after a configured time period.
+### Administrator
 
-### User Registration
+Uses:
 
-* If an email does not exist in the system, a new user record is automatically created.
-* Newly created users receive `approval_status = 'pending'`.
-* Users must verify their email through the Magic Link process.
+* Email
+* Password
 
-### User Approval
+### Student
 
-* Administrators can approve or reject users from the admin panel.
-* Approved users receive full platform access.
-* Rejected users cannot book lessons.
+Uses:
 
-### Booking Restrictions
-
-* Users with `pending` status may have only one active booking.
-* Users with `approved` status may book any available lessons.
-* Individual lessons allow only one participant.
-* Group lessons allow multiple participants based on `max_participants`.
-
-### Dashboard
-
-After authentication, users are redirected to their personal dashboard where they can view:
-
-* Upcoming lessons
-* Booking history
-* Instructor information
-* Calendar and schedule
-* Notifications
-* Account information
-
-### Lesson Management
-
-* Instructors manage their availability through availability slots.
-* Each availability slot may be converted into a lesson.
-* Lessons can be scheduled, completed, or cancelled.
+* Magic Link
 
 ---
+
+## Registration
+
+If a user enters an email that does not exist:
+
+1. Create a new student account
+2. Set approval status to `pending`
+3. Send Magic Link
+4. Wait for administrator approval
+
+---
+
+## User Approval
+
+Administrators can:
+
+* Approve users
+* Reject users
+* View pending accounts
+
+Only approved users receive full platform access.
+
+---
+
+## Availability Management
+
+Administrators can:
+
+* Create availability slots
+* Edit availability slots
+* Delete availability slots
+* Assign teachers
+* Assign subjects
+
+---
+
+## Lesson Booking
+
+Students can:
+
+* View available slots
+* Book lessons
+* Cancel bookings
+
+System must:
+
+* Prevent double booking
+* Respect participant limits
+* Hide unavailable slots
+
+---
+
+## Cancellation Policy
+
+Cancellation is allowed up to 12 hours before the lesson.
+
+Additional restrictions may be applied according to business requirements.
+
+---
+
+## Notifications
+
+The platform should support:
+
+* Magic Link emails
+* Booking confirmations
+* Booking cancellations
+* Lesson reminders
+
+---
+
+# Future Enhancements
+
+The MVP intentionally stores teacher information as text fields.
+
+Future versions may introduce:
+
+* Teachers table
+* Teacher accounts
+* Teacher authentication
+* Teacher profiles
+* Teacher-specific notifications
+* Teacher availability management
+
+The current design should allow migration to a dedicated Teachers entity without major architectural changes.
