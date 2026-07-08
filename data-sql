@@ -21,7 +21,7 @@ CREATE TABLE users (
 
     -- Used only for administrators.
     -- Students authenticate via Magic Links.
-    password_hash TEXT,
+    password_hash TEXT, -- NULL for students, used only by admins
 
     is_email_verified BOOLEAN NOT NULL DEFAULT FALSE,
 
